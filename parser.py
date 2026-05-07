@@ -1,361 +1,247 @@
 import sys
+import re
+from config import VALID_COLUMNS, VALID_AGGS
 
-def error(message):
-    print("Error:", message)
+
+def error(msg):
+    print("Error:", msg)
     sys.exit(1)
 
-def parse_aggregate_token(token, field_name):
+
+def split_input(text, name, sep=","):
+    if not text.strip():
+        error(f"{name} cannot be empty.")
+    parts = [p.strip() for p in text.split(sep)]
+    if any(p == "" for p in parts):
+        error(f"{name} has an empty value.")
+    return parts
+
+
+# --- Aggregate token helpers ---
+
+def _parse_agg(token):
+    """Returns (group_num, agg, attr) or None."""
     parts = token.split("_")
-
-    if len(parts) != 3:
-        error(
-            f"{field_name} item '{token}' is invalid. "
-            f"Use format like 1_sum_quant or sum_1_quant."
-        )
-
-    # style 1: 1_sum_quant
-    if parts[0].isdigit():
-        group_num = int(parts[0])
-        agg_name = parts[1]
-        attr_name = parts[2]
-        return group_num, agg_name, attr_name
-
-    # style 2: sum_1_quant
-    if parts[1].isdigit():
-        agg_name = parts[0]
-        group_num = int(parts[1])
-        attr_name = parts[2]
-        return group_num, agg_name, attr_name
-
-    error(
-        f"{field_name} item '{token}' is invalid. "
-        f"Use format like 1_sum_quant or sum_1_quant."
-    )
-
-
-def try_parse_aggregate_token(token):
-    parts = token.split("_")
-
     if len(parts) != 3:
         return None
-
     if parts[0].isdigit():
         return int(parts[0]), parts[1], parts[2]
-
     if parts[1].isdigit():
         return int(parts[1]), parts[0], parts[2]
-
     return None
 
 
-def build_aggregate_object(token, field_name):
-    group_num, agg_name, attr_name = parse_aggregate_token(token, field_name)
-
-    return {
-        "raw": token,
-        "group": group_num,
-        "agg": agg_name,
-        "attr": attr_name
-    }
+def _require_agg(token, ctx):
+    r = _parse_agg(token)
+    if r is None:
+        error(f"{ctx} '{token}' is invalid. Use format like 1_sum_quant.")
+    return r
 
 
-def build_projected_item_object(item, valid_columns):
-    if item in valid_columns:
-        return {
-            "raw": item,
-            "kind": "attribute",
-            "attribute": item
-        }
-
-    group_num, agg_name, attr_name = parse_aggregate_token(item, "S")
-
-    return {
-        "raw": item,
-        "kind": "aggregate",
-        "group": group_num,
-        "agg": agg_name,
-        "attr": attr_name
-    }
+def _check_agg(group_num, agg, attr, n, ctx):
+    if group_num < 1 or group_num > n:
+        error(f"{ctx}: group {group_num} is out of range (n={n}).")
+    if agg not in VALID_AGGS:
+        error(f"{ctx}: '{agg}' is not a valid aggregate.")
+    if attr not in VALID_COLUMNS:
+        error(f"{ctx}: '{attr}' is not a valid column.")
 
 
-def parse_literal_value(raw_value):
-    text = raw_value.strip()
-
-    if len(text) >= 2 and text[0] == "'" and text[-1] == "'":
+def _parse_literal(raw):
+    text = raw.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
         return text[1:-1]
-
-    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
-        return text[1:-1]
-
-    lowered = text.lower()
-    if lowered == "true":
-        return True
-
-    if lowered == "false":
-        return False
-
+    lo = text.lower()
+    if lo == "true": return True
+    if lo == "false": return False
     try:
-        if "." in text:
-            return float(text)
-        return int(text)
+        return float(text) if "." in text else int(text)
     except ValueError:
         return text
 
 
-def split_sigma_condition_parts(condition):
-    import re
-
-    pattern = re.compile(
-        r"^\s*(\d+)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$"
-    )
-
-    match = pattern.match(condition)
-
-    if not match:
-        error(
-            f"sigma condition '{condition}' is invalid. "
-            f"Use something like 1.state='NY' or 2.quant>1_avg_quant."
-        )
-
-    group_num = int(match.group(1))
-    left_attr = match.group(2)
-    op = match.group(3)
-    right_raw = match.group(4).strip()
-
-    if op == "=":
-        op = "=="
-
-    return group_num, left_attr, op, right_raw
+def _split_and(text):
+    parts = [p.strip() for p in text.split("and")]
+    if any(p == "" for p in parts):
+        error(f"Invalid condition chain '{text}'.")
+    return parts
 
 
-def split_on_and(text):
-    parts = text.split("and")
-    cleaned_parts = []
+# --- V ---
 
-    for part in parts:
-        piece = part.strip()
-        if piece == "":
-            error(f"Invalid condition chain '{text}'.")
-        cleaned_parts.append(piece)
+def _parse_v(V):
+    seen = set()
+    for attr in V:
+        if attr not in VALID_COLUMNS:
+            error(f"V contains invalid attribute '{attr}'.")
+        if attr in seen:
+            error(f"V contains duplicate '{attr}'.")
+        seen.add(attr)
+    return V
 
-    return cleaned_parts
+
+# --- F ---
+
+def _parse_f(F, n):
+    seen, result = set(), []
+    for item in F:
+        group_num, agg, attr = _require_agg(item, "F")
+        _check_agg(group_num, agg, attr, n, f"F '{item}'")
+        if item in seen:
+            error(f"F contains duplicate '{item}'.")
+        seen.add(item)
+        result.append({"raw": item, "group": group_num, "agg": agg, "attr": attr})
+    return result
 
 
-def build_single_sigma_predicate(condition, valid_columns):
-    group_num, left_attr, op, right_raw = split_sigma_condition_parts(condition)
+# --- S ---
 
-    if right_raw in valid_columns:
-        right_type = "group_attr"
-        right_value = right_raw
-        aggregate_ref = None
+def _parse_s(S, n, f_names):
+    seen, result = set(), []
+    for item in S:
+        if item in seen:
+            error(f"S contains duplicate '{item}'.")
+        seen.add(item)
+        if item in VALID_COLUMNS:
+            result.append({"raw": item, "kind": "attribute", "attribute": item})
+        else:
+            group_num, agg, attr = _require_agg(item, "S")
+            _check_agg(group_num, agg, attr, n, f"S '{item}'")
+            if item not in f_names:
+                error(f"S aggregate '{item}' must also appear in F.")
+            result.append({"raw": item, "kind": "aggregate",
+                           "group": group_num, "agg": agg, "attr": attr})
+    return result
+
+
+# --- Sigma ---
+
+_SIGMA_RE = re.compile(
+    r"^\s*(\d+)\.([a-zA-Z_]\w*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$"
+)
+
+
+def _parse_sigma_pred(condition, n, current_group, f_names):
+    m = _SIGMA_RE.match(condition)
+    if not m:
+        error(f"sigma condition '{condition}' is invalid. Use format like 1.state='NY'.")
+    group_num = int(m.group(1))
+    left_attr = m.group(2)
+    op = "==" if m.group(3) == "=" else m.group(3)
+    right_raw = m.group(4).strip()
+
+    if group_num < 1 or group_num > n:
+        error(f"sigma condition '{condition}' uses group {group_num}, but n={n}.")
+    if left_attr not in VALID_COLUMNS:
+        error(f"sigma condition '{condition}' uses invalid attribute '{left_attr}'.")
+    if op not in ("==", "!=", ">", "<", ">=", "<="):
+        error(f"sigma condition '{condition}' uses unsupported operator.")
+
+    if right_raw in VALID_COLUMNS:
+        right_type, right_value, agg_ref = "group_attr", right_raw, None
     else:
-        aggregate_parts = try_parse_aggregate_token(right_raw)
-
-        if aggregate_parts is not None:
-            ref_group, ref_agg, ref_attr = aggregate_parts
+        agg = _parse_agg(right_raw)
+        if agg is not None:
+            ref_group, ref_agg, ref_attr = agg
+            if ref_group >= current_group:
+                error(f"sigma '{condition}' references forward group {ref_group}.")
+            _check_agg(ref_group, ref_agg, ref_attr, n, f"sigma '{condition}' right-side")
+            if right_raw not in f_names:
+                error(f"sigma '{condition}' references undefined aggregate '{right_raw}'.")
             right_type = "aggregate_field"
             right_value = right_raw
-            aggregate_ref = {
-                "group": ref_group,
-                "agg": ref_agg,
-                "attr": ref_attr
-            }
+            agg_ref = {"group": ref_group, "agg": ref_agg, "attr": ref_attr}
         else:
-            right_type = "literal"
-            right_value = parse_literal_value(right_raw)
-            aggregate_ref = None
+            right_type, right_value, agg_ref = "literal", _parse_literal(right_raw), None
 
-    return {
-        "raw": condition,
-        "group": group_num,
-        "left_attr": left_attr,
-        "op": op,
-        "right_type": right_type,
-        "right_value": right_value,
-        "aggregate_ref": aggregate_ref
-    }
+    return {"raw": condition, "group": group_num, "left_attr": left_attr,
+            "op": op, "right_type": right_type, "right_value": right_value,
+            "aggregate_ref": agg_ref}
 
 
-def build_sigma_object(condition_text, valid_columns):
-    predicate_texts = split_on_and(condition_text)
-    predicates = []
-
-    for predicate_text in predicate_texts:
-        predicates.append(build_single_sigma_predicate(predicate_text, valid_columns))
-
-    if len(predicates) == 0:
-        error(f"sigma condition '{condition_text}' is invalid.")
-
-    group_num = predicates[0]["group"]
-
-    for predicate in predicates:
-        if predicate["group"] != group_num:
-            error(
-                f"sigma condition '{condition_text}' mixes grouping variables. "
-                f"Keep one grouping variable per sigma entry."
-            )
-
-    return {
-        "raw": condition_text,
-        "group": group_num,
-        "predicates": predicates
-    }
+def _parse_sigma(sigma, n, f_names):
+    seen_groups, result = set(), []
+    for condition_text in sigma:
+        parts = _split_and(condition_text)
+        matches = [_SIGMA_RE.match(p) for p in parts]
+        if any(m is None for m in matches):
+            error(f"sigma condition '{condition_text}' is invalid.")
+        groups = {int(m.group(1)) for m in matches}
+        if len(groups) != 1:
+            error(f"sigma condition '{condition_text}' mixes grouping variables.")
+        g = groups.pop()
+        if g in seen_groups:
+            error(f"sigma has two entries for group {g}.")
+        seen_groups.add(g)
+        predicates = [_parse_sigma_pred(p, n, g, f_names) for p in parts]
+        result.append({"raw": condition_text, "group": g, "predicates": predicates})
+    if len(seen_groups) != n:
+        error("sigma must have exactly one condition per grouping variable.")
+    return result
 
 
-def split_g_condition_parts(condition):
-    import re
+# --- G ---
 
-    pattern = re.compile(
-        r"^\s*([a-zA-Z_][a-zA-Z0-9_]*|\d+_[a-zA-Z_][a-zA-Z0-9_]*_[a-zA-Z_][a-zA-Z0-9_]*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$"
-    )
-
-    match = pattern.match(condition)
-
-    if not match:
-        error(
-            f"G condition '{condition}' is invalid. "
-            f"Use something like 1_sum_quant>10 or cust='Owen'."
-        )
-
-    left_name = match.group(1)
-    op = match.group(2)
-    right_raw = match.group(3).strip()
-
-    if op == "=":
-        op = "=="
-
-    return left_name, op, right_raw
+_G_RE = re.compile(
+    r"^\s*([a-zA-Z_]\w*|\d+_[a-zA-Z_]\w*_[a-zA-Z_]\w*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$"
+)
 
 
-def build_single_g_predicate(condition, valid_columns):
-    left_name, op, right_raw = split_g_condition_parts(condition)
+def _parse_g_pred(condition, n, f_names):
+    m = _G_RE.match(condition)
+    if not m:
+        error(f"G condition '{condition}' is invalid.")
+    left_name = m.group(1)
+    op = "==" if m.group(2) == "=" else m.group(2)
+    right_raw = m.group(3).strip()
 
-    if right_raw in valid_columns:
-        right_type = "field"
-        right_value = right_raw
+    if op not in ("==", "!=", ">", "<", ">=", "<="):
+        error(f"G condition '{condition}' uses unsupported operator.")
+
+    if left_name not in VALID_COLUMNS:
+        group_num, agg_name, attr_name = _require_agg(left_name, "G condition left side")
+        _check_agg(group_num, agg_name, attr_name, n, f"G '{condition}' left")
+        if left_name not in f_names:
+            error(f"G condition references undefined aggregate '{left_name}'.")
+
+    if right_raw in VALID_COLUMNS:
+        right_type, right_value = "field", right_raw
     else:
-        aggregate_parts = try_parse_aggregate_token(right_raw)
-
-        if aggregate_parts is not None:
-            right_type = "field"
-            right_value = right_raw
+        agg = _parse_agg(right_raw)
+        if agg is not None:
+            group_num, agg_name, attr_name = agg
+            _check_agg(group_num, agg_name, attr_name, n, f"G '{condition}' right")
+            if right_raw not in f_names:
+                error(f"G condition references undefined aggregate '{right_raw}'.")
+            right_type, right_value = "field", right_raw
         else:
-            right_type = "literal"
-            right_value = parse_literal_value(right_raw)
+            right_type, right_value = "literal", _parse_literal(right_raw)
 
-    return {
-        "raw": condition,
-        "left_type": "field",
-        "left_value": left_name,
-        "op": op,
-        "right_type": right_type,
-        "right_value": right_value
-    }
+    return {"raw": condition, "left_type": "field", "left_value": left_name,
+            "op": op, "right_type": right_type, "right_value": right_value}
 
 
-def build_g_object(G_text, valid_columns):
+def _parse_g(G_text, n, f_names):
     G_text = G_text.strip()
-
     if G_text.upper() == "NONE":
-        return {
-            "raw": G_text,
-            "kind": "none",
-            "predicates": []
-        }
-
-    predicate_texts = split_on_and(G_text)
-    predicates = []
-
-    for predicate_text in predicate_texts:
-        predicates.append(build_single_g_predicate(predicate_text, valid_columns))
-
-    return {
-        "raw": G_text,
-        "kind": "and_chain",
-        "predicates": predicates
-    }
+        return {"raw": G_text, "kind": "none", "predicates": []}
+    predicate_texts = _split_and(G_text)
+    return {"raw": G_text, "kind": "and_chain",
+            "predicates": [_parse_g_pred(p, n, f_names) for p in predicate_texts]}
 
 
-def validate_s_aggregates_exist_in_f(parsed_S, parsed_F):
-    allowed_aggregates = set()
-
-    for agg_item in parsed_F:
-        allowed_aggregates.add(agg_item["raw"])
-
-    for item in parsed_S:
-        if item["kind"] == "aggregate" and item["raw"] not in allowed_aggregates:
-            error(
-                f"S aggregate '{item['raw']}' must also appear in F."
-            )
-
-
-def validate_sigma_aggregate_references(parsed_sigma, parsed_F):
-    allowed_aggregates = set()
-
-    for agg_item in parsed_F:
-        allowed_aggregates.add(agg_item["raw"])
-
-    for sigma_object in parsed_sigma:
-        for predicate in sigma_object["predicates"]:
-            if predicate["right_type"] == "aggregate_field":
-                ref_name = predicate["right_value"]
-
-                if ref_name not in allowed_aggregates:
-                    error(
-                        f"sigma condition '{predicate['raw']}' references undefined aggregate '{ref_name}'."
-                    )
-
-
-def validate_g_aggregate_references(parsed_G, parsed_F, valid_columns):
-    if parsed_G["kind"] == "none":
-        return
-
-    allowed_aggregates = set()
-
-    for agg_item in parsed_F:
-        allowed_aggregates.add(agg_item["raw"])
-
-    for predicate in parsed_G["predicates"]:
-        left_name = predicate["left_value"]
-
-        if left_name not in valid_columns and left_name not in allowed_aggregates:
-            error(
-                f"G condition '{predicate['raw']}' references undefined aggregate '{left_name}'."
-            )
-
-        if predicate["right_type"] == "field":
-            right_name = predicate["right_value"]
-
-            if right_name not in valid_columns and right_name not in allowed_aggregates:
-                error(
-                    f"G condition '{predicate['raw']}' references undefined aggregate '{right_name}'."
-                )
-
+# --- Public entry point ---
 
 def build_query_data(S, n, V, F, sigma, G):
-    from config import VALID_COLUMNS
+    V = _parse_v(V)
+    parsed_F = _parse_f(F, n)
+    f_names = {item["raw"] for item in parsed_F}
+    parsed_S = _parse_s(S, n, f_names)
+    parsed_sigma = _parse_sigma(sigma, n, f_names)
+    parsed_G = _parse_g(G, n, f_names)
 
-    parsed_S = []
-    parsed_F = []
-    parsed_sigma = []
-
-    for item in S:
-        parsed_S.append(build_projected_item_object(item, VALID_COLUMNS))
-
-    for item in F:
-        parsed_F.append(build_aggregate_object(item, "F"))
-
-    for condition in sigma:
-        parsed_sigma.append(build_sigma_object(condition, VALID_COLUMNS))
-
-    parsed_G = build_g_object(G, VALID_COLUMNS)
-
-    validate_s_aggregates_exist_in_f(parsed_S, parsed_F)
-    validate_sigma_aggregate_references(parsed_sigma, parsed_F)
-    validate_g_aggregate_references(parsed_G, parsed_F, VALID_COLUMNS)
-
-    query_data = {
-        "S_raw": S,
+    return {
+        "S_raw": [item["raw"] for item in parsed_S],
         "n": n,
         "V": V,
         "F_raw": F,
@@ -363,7 +249,5 @@ def build_query_data(S, n, V, F, sigma, G):
         "G": parsed_G,
         "S": parsed_S,
         "F": parsed_F,
-        "sigma": parsed_sigma
+        "sigma": parsed_sigma,
     }
-
-    return query_data
