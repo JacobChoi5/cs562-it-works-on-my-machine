@@ -11,6 +11,7 @@ from mf_query import build_mf_query, execute_mf_query
 from sql import scan_sales_rows
 
 
+# prints a summary of the query after its been accepted
 def print_query_summary(query_data):
     print("\nQuery accepted.")
     print(f"n = {query_data['n']}")
@@ -21,15 +22,17 @@ def print_query_summary(query_data):
     print(f"G = {query_data['G']['raw']}")
 
 
+# prints the final rows produced by the (e)mf query
 def print_final_results(results):
     print("\nFinal results:")
     if not results:
-        print("  No rows matched.")
+        print("No rows matched.")
         return
     for row in results:
         print(" ", row)
 
-
+# generates and saves intermediate Python files used by the project.
+# it creats the generated MF structure file and generated simple query file and returns their filenames
 def save_step_outputs(query_data):
     mf_fields = build_mf_structure_fields(query_data)
     mf_struct_file = "generated/generated_mf_struct.py"
@@ -67,6 +70,7 @@ _SECTIONS = [
 ]
 
 
+# Use case 1: Reads query inputs from a txt, and scans for SELECT, ATTR, GROUPING VARS, etc (validates all)
 def read_inputs_from_file(filepath):
     with open(filepath) as f:
         lines = [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
@@ -91,6 +95,7 @@ def read_inputs_from_file(filepath):
             ";".join(sections["sigma"]), sections["G"][0])
 
 
+# Use case 2: Prompts user to enter each query component in the terminal
 def read_inputs_interactively():
     print("Enter query inputs (press Enter after each):")
     S_input = input("SELECT ATTRIBUTE(S): ").strip()
@@ -100,15 +105,16 @@ def read_inputs_interactively():
     print("SELECT CONDITION-VECT([sigma]) - one condition per line, blank line when done:")
     sigma_lines = []
     while True:
-        line = input("  sigma: ").strip()
+        line = input("sigma: ").strip()
         if not line:
             break
         sigma_lines.append(line)
     G_input = input("HAVING_CONDITION(G): ").strip()
     return S_input, n_input, V_input, F_input, ";".join(sigma_lines), G_input
 
-
+# MAIN EXECUTION PIPELINE
 def parse_and_run(S_input, n_input, V_input, F_input, sigma_input, G_input):
+    # validates N
     try:
         n = int(n_input)
     except ValueError:
@@ -116,11 +122,13 @@ def parse_and_run(S_input, n_input, V_input, F_input, sigma_input, G_input):
     if n <= 0:
         error("n must be greater than 0.")
 
-    S     = split_input(S_input, "S")
-    V     = split_input(V_input, "V")
-    F     = split_input(F_input, "F")
+    # splits and validates all user inputs
+    S = split_input(S_input, "S")
+    V = split_input(V_input, "V")
+    F = split_input(F_input, "F")
     sigma = split_input(sigma_input, "sigma", ";")
 
+    # checks that sigma count matches number of grouping vars (n)
     if len(sigma) != n:
         error("The number of sigma conditions must match n.")
 
@@ -128,24 +136,30 @@ def parse_and_run(S_input, n_input, V_input, F_input, sigma_input, G_input):
     if not G:
         error("G cannot be empty.")
 
+    # builds parsed query structure
     query_data = build_query_data(S, n, V, F, sigma, G)
 
+    # prints out parsed query summ
     print_query_summary(query_data)
 
+    # builds mf query object
     mf_struct_file, simple_query_file = save_step_outputs(query_data)
 
+    # scans rows from the sales table
     mf_query = build_mf_query(query_data)
     rows = list(scan_sales_rows())
+    # executes the query
     _, _, _, results = execute_mf_query(rows, mf_query)
     print_final_results(results)
 
+    # saves theh generated query PY program
     mf_output_filename = "generated/generated_mf_query.py"
     save_generated_code(mf_output_filename, generate_python_mf_query_code(mf_query))
 
     print("\nGenerated files:")
-    print(f"  {mf_struct_file}")
-    print(f"  {simple_query_file}")
-    print(f"  {mf_output_filename}")
+    print(f"{mf_struct_file}")
+    print(f"{simple_query_file}")
+    print(f"{mf_output_filename}")
     print("Run generated MF query with: python3 generated/generated_mf_query.py")
 
 
@@ -159,9 +173,9 @@ def main():
     else:
         error(
             "Usage:\n"
-            "  File mode:        python3 main.py --file query.txt\n"
-            "  Interactive mode: python3 main.py\n"
-            "  CLI mode:         python3 main.py S n V F sigma G"
+            "File mode: python3 main.py --file query.txt\n"
+            "Interactive mode: python3 main.py\n"
+            "CLI mode: python3 main.py S n V F sigma G"
         )
 
     parse_and_run(*inputs)

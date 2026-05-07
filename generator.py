@@ -4,8 +4,9 @@ from pprint import pformat
 from mf_structure import build_empty_mf_entry, build_mf_structure_fields, get_attribute_type, get_aggregate_result_type
 
 
+# builds the mf_fields list for the hardcoded warmup simple query
+# only used for the handout demo — not for real MF queries
 def build_simple_mf_fields(simple_query):
-    # builds the mf field list for the simple (non-MF) warmup query
     fields = []
     seen = set()
     for attr in simple_query["V"]:
@@ -22,13 +23,13 @@ def build_simple_mf_fields(simple_query):
     return fields
 
 
+# generates python code that sets up the MF structure (entry template, empty table, row count)
+# writes it to _generated.py and runs it to make sure it's valid
 def generate_python_mf_structure_code(mf_fields):
     empty_entry = build_empty_mf_entry(mf_fields)
 
     tmp = f"""
-# ------------------------------------------------------------
 # Generated mf-structure setup
-# ------------------------------------------------------------
 
 MF_ENTRY_TEMPLATE = {pformat(empty_entry)}
 
@@ -42,16 +43,17 @@ NUM_OF_ENTRIES = 0
     return tmp
 
 
+# generates a standalone python program for the warmup simple query from the handout
+# this is hardcoded on purpose — it's specifically the required demo, not meant to be general
+# scans sales rows, filters them, builds mf entries, updates aggregates, prints results
 def generate_python_simple_query_code(simple_query):
     mf_fields = build_simple_mf_fields(simple_query)
     empty_entry = build_empty_mf_entry(mf_fields)
 
     tmp = f"""
-# ------------------------------------------------------------
 # Generated simple query program
 # Run from project root with:
 # python3 -m generated.generated_simple_query
-# ------------------------------------------------------------
 
 import sys
 import os
@@ -121,13 +123,13 @@ if __name__ == '__main__':
     return tmp
 
 
+# generates a standalone python program for running a full MF query
+# takes the parsed mf_query dict and writes a complete runnable script that loads sales rows and prints results
 def generate_python_mf_query_code(mf_query):
     tmp = f"""
-# ------------------------------------------------------------
 # Generated MF query program
 # Run from project root with:
 # python3 -m generated.generated_mf_query
-# ------------------------------------------------------------
 
 import sys
 import os
@@ -160,6 +162,7 @@ if __name__ == '__main__':
     return tmp
 
 
+# saves a generated code string to a file
 def save_generated_code(filename, code_text):
     with open(filename, "w", encoding="utf-8") as f:
         f.write(code_text)
