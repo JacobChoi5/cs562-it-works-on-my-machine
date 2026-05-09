@@ -1,41 +1,16 @@
 import os
 import psycopg2
 import psycopg2.extras
-import tabulate
 from dotenv import load_dotenv
 from parser import error
 
 
-def query():
-    """
-    Used for testing standard queries in SQL.
-    """
-    load_dotenv()
-
-    user = os.getenv('USER')
-    password = os.getenv('PASSWORD')
-    dbname = os.getenv('DBNAME')
-
-    conn = psycopg2.connect("dbname="+dbname+" user="+user+" password="+password,
-                            cursor_factory=psycopg2.extras.DictCursor)
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM sales WHERE quant > 10")
-
-    return tabulate.tabulate(cur.fetchall(),
-                             headers="keys", tablefmt="psql")
-
-def get_db_connection():
+def get_db_connection(): # establishes PostgreSQL database connection
     # keep connection setup simple and driven by env vars
     # way cleaner than hardcoding creds into the project
     load_dotenv()
-    
-    if psycopg2 is None:
-        error(
-            "psycopg2 is not installed. Run: pip install psycopg2-binary"
-        )
-
     try:
-        connection = psycopg2.connect(
+        connection = psycopg2.connect( # uses local enviornment to establish connection
             host=os.getenv("PGHOST", "localhost"),
             port=os.getenv("PGPORT", "5432"),
             dbname=os.getenv("PGDATABASE"),
@@ -53,8 +28,8 @@ def scan_sales_rows():
     connection = get_db_connection()
 
     try:
-        with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-            cursor.execute(
+        with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor: # turns result into python dict
+            cursor.execute( # full scan query of sales table to dictionary form
                 """
                 SELECT cust, prod, day, month, year, state, quant, date
                 FROM sales
@@ -62,13 +37,6 @@ def scan_sales_rows():
             )
 
             for row in cursor:
-                yield dict(row)
+                yield dict(row) # produces over time
     finally:
         connection.close()
-
-def main():
-    print(query())
-
-
-if "__main__" == __name__:
-    main()

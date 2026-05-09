@@ -33,8 +33,6 @@ def generate_python_mf_structure_code(mf_fields):
 
 MF_ENTRY_TEMPLATE = {pformat(empty_entry)}
 
-mf_table = []
-
 NUM_OF_ENTRIES = 0
 """
 

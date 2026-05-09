@@ -3,13 +3,13 @@ import re
 from config import VALID_COLUMNS, VALID_AGGS
 
 
-def error(msg):
+def error(msg): # formatting for error messages and exiting program
     print("Error:", msg)
     sys.exit(1)
 
 
-def split_input(text, name, sep=","):
-    if not text.strip():
+def split_input(text, name, sep=","): # preprocessing on comma separated string
+    if not text.strip(): # removes whitespace, check if nothing between commas
         error(f"{name} cannot be empty.")
     parts = [p.strip() for p in text.split(sep)]
     if any(p == "" for p in parts):
@@ -17,9 +17,7 @@ def split_input(text, name, sep=","):
     return parts
 
 
-# --- Aggregate token helpers ---
-
-def _parse_agg(token):
+def _parse_agg(token): # ie 1_sum_quant or sum_1_quant
     """Returns (group_num, agg, attr) or None."""
     parts = token.split("_")
     if len(parts) != 3:
@@ -117,7 +115,7 @@ def _parse_s(S, n, f_names):
 # --- Sigma ---
 
 _SIGMA_RE = re.compile(
-    r"^\s*(\d+)\.([a-zA-Z_]\w*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$"
+    r"^\s*(\d+)\.([a-zA-Z_]\w*)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*$" # CLAUDE DID THIS ONE
 )
 
 
