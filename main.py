@@ -39,7 +39,7 @@ def save_step_outputs(query_data):
 
 
 # Section header keywords for file-mode input parsing
-_SECTIONS = [
+SECTIONS = [
     ("select attribute", "S"),
     ("number of grouping", "n"),
     ("grouping attributes", "V"),
@@ -58,7 +58,7 @@ def read_inputs_from_file(filepath):
     sections, cur, cur_lines = {}, None, []
     for line in lines:
         lo = line.lower()
-        new_sec = next((v for k, v in _SECTIONS if k in lo), None)
+        new_sec = next((v for k, v in SECTIONS if k in lo), None)
         if new_sec:
             if cur: sections[cur] = cur_lines
             cur, cur_lines = new_sec, []

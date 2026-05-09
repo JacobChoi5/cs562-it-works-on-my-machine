@@ -1,7 +1,7 @@
-import operator as _op
+import operator as op
 from mf_structure import lookup_mf_entry, add_mf_entry, build_mf_structure_fields
 
-_CMP = {"==": _op.eq, "!=": _op.ne, ">": _op.gt, "<": _op.lt, ">=": _op.ge, "<=": _op.le} # translation of operators
+CMP = {"==": op.eq, "!=": op.ne, ">": op.gt, "<": op.lt, ">=": op.ge, "<=": op.le} # translation of operators
 
 
 def build_mf_query(query_data): # reshapes the raw parsed query dict into mf query structure
@@ -16,12 +16,12 @@ def build_mf_query(query_data): # reshapes the raw parsed query dict into mf que
 
 
 def compare_values(left, op, right): # checks if op in supported comparison ops and resolves
-    if op not in _CMP:
+    if op not in CMP:
         raise ValueError(f"Unsupported comparison operator: {op}")
-    return _CMP[op](left, right)
+    return CMP[op](left, right)
 
 
-def _resolve(entry, name): # helper for aggregates: avg stored with sum count and value, returns just value
+def resolve(entry, name): # helper for aggregates: avg stored with sum count and value, returns just value
     v = entry[name]
     return v["value"] if isinstance(v, dict) and "value" in v else v # only avg holds "value"
 
@@ -35,7 +35,7 @@ def row_matches_sigma(row, entry, sigma):
         if rt == "literal":
             right = p["right_value"]
         elif rt in ("group_attr", "aggregate_field"): # aggregate_field precomputed
-            right = _resolve(entry, p["right_value"]) # only necessary for avg
+            right = resolve(entry, p["right_value"]) # only necessary for avg
         else:
             return False
         if not compare_values(left, p["op"], right):
@@ -47,14 +47,14 @@ def entry_matches_g(entry, G): # applies HAVING clause
     if G["kind"] == "none":
         return True
     for p in G["predicates"]:
-        left = _resolve(entry, p["left_value"])
-        right = p["right_value"] if p["right_type"] == "literal" else _resolve(entry, p["right_value"]) # either literal or aggregate to be resolved
+        left = resolve(entry, p["left_value"])
+        right = p["right_value"] if p["right_type"] == "literal" else resolve(entry, p["right_value"]) # either literal or aggregate to be resolved
         if not compare_values(left, p["op"], right): # checks comparison
             return False
     return True
 
 
-def _update_agg(entry, item, row): # updates all aggregates
+def update_agg(entry, item, row): # updates all aggregates
     n, a, v = item["raw"], item["agg"], row[item["attr"]]
     if a == "sum":
         entry[n] += v
@@ -92,10 +92,10 @@ def execute_mf_query(rows, mf_query):
             pos = lookup_mf_entry(table, row, mf_query["V"]) # matches grouping attribute
             if pos != -1 and row_matches_sigma(row, table[pos], sigma): # checks filter, updates if passes
                 for item in aggs:
-                    _update_agg(table[pos], item, row)
+                    update_agg(table[pos], item, row)
 
     filtered = [e for e in table if entry_matches_g(e, mf_query["G"])] # drops entries based on HAVING
-    results = [{k: _resolve(e, k) for k in mf_query["S"]} for e in filtered] # builds with only S columns and flattens aggregates
+    results = [{k: resolve(e, k) for k in mf_query["S"]} for e in filtered] # builds with only S columns and flattens aggregates
     results.sort(key=lambda r: tuple(r[a] for a in mf_query["V"])) # sorts by grouping aggregate
 
     return mf_fields, table, filtered, results # field schema, full table, filtered table, and projected results
