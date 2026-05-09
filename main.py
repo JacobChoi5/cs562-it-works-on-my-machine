@@ -3,7 +3,6 @@ from parser import build_query_data, error, split_input
 from mf_structure import build_mf_structure_fields
 from generator import (
     generate_python_mf_structure_code,
-    generate_python_simple_query_code,
     generate_python_mf_query_code,
     save_generated_code,
 )
@@ -31,31 +30,12 @@ def print_final_results(results):
     for row in results:
         print(" ", row)
 
-# generates and saves intermediate Python files used by the project.
-# it creats the generated MF structure file and generated simple query file and returns their filenames
+# generates and saves the MF structure file and returns its filename
 def save_step_outputs(query_data):
     mf_fields = build_mf_structure_fields(query_data)
     mf_struct_file = "generated/generated_mf_struct.py"
     save_generated_code(mf_struct_file, generate_python_mf_structure_code(mf_fields))
-
-    simple_query_file = "generated/generated_simple_query.py"
-    save_generated_code(simple_query_file, generate_python_simple_query_code(_sample_simple_query()))
-
-    return mf_struct_file, simple_query_file
-
-
-def _sample_simple_query():
-    # hardcoded warmup query from the project handout:
-    # select cust, prod, avg(quant), max(quant) from sales where year=2009 group by cust, prod
-    return {
-        "S": ["cust", "prod", "avg_quant", "max_quant"],
-        "V": ["cust", "prod"],
-        "F": [
-            {"raw": "avg_quant", "agg": "avg", "attr": "quant"},
-            {"raw": "max_quant", "agg": "max", "attr": "quant"},
-        ],
-        "where": [{"attribute": "year", "op": "==", "value": 2009}]
-    }
+    return mf_struct_file
 
 
 # Section header keywords for file-mode input parsing
@@ -142,23 +122,18 @@ def parse_and_run(S_input, n_input, V_input, F_input, sigma_input, G_input):
     # prints out parsed query summ
     print_query_summary(query_data)
 
-    # builds mf query object
-    mf_struct_file, simple_query_file = save_step_outputs(query_data)
+    mf_struct_file = save_step_outputs(query_data)
 
-    # scans rows from the sales table
     mf_query = build_mf_query(query_data)
     rows = list(scan_sales_rows())
-    # executes the query
     _, _, _, results = execute_mf_query(rows, mf_query)
     print_final_results(results)
 
-    # saves theh generated query PY program
     mf_output_filename = "generated/generated_mf_query.py"
     save_generated_code(mf_output_filename, generate_python_mf_query_code(mf_query))
 
     print("\nGenerated files:")
     print(f"{mf_struct_file}")
-    print(f"{simple_query_file}")
     print(f"{mf_output_filename}")
     print("Run generated MF query with: python3 generated/generated_mf_query.py")
 

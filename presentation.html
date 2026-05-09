@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EMF Query Engine – CS562</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
+
+  .slide { display: none; width: 100vw; height: 100vh; padding: 60px 80px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 2.8rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.4em; }
+  h2 { font-size: 2rem; font-weight: 600; color: #38bdf8; margin-bottom: 0.6em; border-bottom: 2px solid #1e3a5f; padding-bottom: 0.3em; }
+  h3 { font-size: 1.2rem; font-weight: 600; color: #7dd3fc; margin-bottom: 0.3em; }
+  p  { font-size: 1.05rem; line-height: 1.7; color: #cbd5e1; }
+
+  .subtitle { font-size: 1.3rem; color: #94a3b8; margin-bottom: 1.2em; }
+  .tag { display: inline-block; background: #1e3a5f; color: #38bdf8; border-radius: 6px; padding: 3px 10px; font-size: 0.85rem; margin: 2px; }
+
+  ul { padding-left: 1.4em; }
+  li { font-size: 1.05rem; line-height: 1.8; color: #cbd5e1; }
+  li strong { color: #f0f9ff; }
+
+  .cols { display: grid; gap: 40px; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 22px 26px; }
+  .card h3 { margin-bottom: 0.5em; }
+
+  code { font-family: 'Fira Mono', 'Consolas', monospace; font-size: 0.92em; }
+  pre  { background: #0d1b2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 18px 22px; overflow: auto;
+         font-family: 'Fira Mono', 'Consolas', monospace; font-size: 0.88rem; line-height: 1.6; color: #93c5fd; }
+  .kw { color: #f472b6; } .cm { color: #475569; font-style: italic; } .str { color: #86efac; } .fn { color: #fbbf24; }
+
+  .pipeline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  .step { background: #1e3a5f; border-radius: 8px; padding: 12px 18px; text-align: center; flex: 1; min-width: 100px; }
+  .step .label { font-size: 0.78rem; color: #94a3b8; margin-bottom: 4px; }
+  .step .name  { font-size: 0.95rem; font-weight: 600; color: #38bdf8; }
+  .arrow { color: #475569; font-size: 1.4rem; }
+
+  .formula { background: #0d1b2e; border-left: 4px solid #38bdf8; padding: 14px 20px; border-radius: 0 8px 8px 0;
+             font-family: 'Fira Mono', monospace; font-size: 1rem; color: #93c5fd; margin: 16px 0; }
+
+  footer { position: fixed; bottom: 20px; right: 30px; font-size: 0.8rem; color: #475569; }
+  .slide-num { position: fixed; bottom: 20px; left: 30px; font-size: 0.8rem; color: #475569; }
+  .nav { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; }
+  .nav button { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 6px 18px;
+                border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: background 0.15s; }
+  .nav button:hover { background: #334155; color: #e2e8f0; }
+
+  .highlight { color: #fbbf24; font-weight: 600; }
+  .muted { color: #64748b; }
+
+  /* slide-specific */
+  #s1 { text-align: center; align-items: center; }
+  #s1 h1 { font-size: 3.2rem; }
+  #s1 .big-tag { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1: Title -->
+<div class="slide active" id="s1">
+  <h1>EMF Query Engine</h1>
+  <p class="subtitle">An Extended Multi-Feature Query Processor over PostgreSQL</p>
+  <div class="big-tag">
+    <span class="tag">CS562 – Advanced Database Systems</span>
+    <span class="tag">Python</span>
+    <span class="tag">PostgreSQL</span>
+    <span class="tag">Code Generation</span>
+  </div>
+  <p style="margin-top:36px; color:#475569; font-size:0.95rem;">Owen Ungaro</p>
+</div>
+
+<!-- SLIDE 2: Problem & Motivation -->
+<div class="slide" id="s2">
+  <h2>What is an EMF Query?</h2>
+  <p style="margin-bottom:20px;">Standard SQL can't express cross-group comparisons in a single pass. <strong>Extended Multi-Feature (EMF)</strong> queries generalize GROUP BY to support <span class="highlight">n independent grouping variables</span>, each filtered by its own σ (sigma) predicate.</p>
+  <div class="cols cols-2">
+    <div class="card">
+      <h3>Standard SQL Limitation</h3>
+      <pre><code><span class="cm">-- Needs 3 separate subqueries or joins:</span>
+<span class="cm">-- NY sales vs NJ sales vs CT sales</span>
+<span class="kw">SELECT</span> cust,
+  sum_NY, sum_NJ, sum_CT
+<span class="kw">FROM</span> ... <span class="cm">-- complex self-joins</span></code></pre>
+    </div>
+    <div class="card">
+      <h3>EMF Query (this engine)</h3>
+      <pre><code><span class="cm">-- One clean declarative query:</span>
+S  = cust, 1_sum_quant,
+     2_sum_quant, 3_sum_quant
+n  = 3
+V  = cust
+σ₁ = 1.state=<span class="str">'NY'</span>
+σ₂ = 2.state=<span class="str">'NJ'</span>
+σ₃ = 3.state=<span class="str">'CT'</span></code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 3: Query Algebra -->
+<div class="slide" id="s3">
+  <h2>The EMF Query Model</h2>
+  <p style="margin-bottom:16px;">A query is defined by six components, analogous to extended relational algebra:</p>
+  <div class="cols cols-2" style="gap:16px;">
+    <div class="card"><h3><code>S</code> — Select Attributes</h3><p>Columns and computed aggregates to output (like <code>SELECT</code> in SQL).</p></div>
+    <div class="card"><h3><code>n</code> — Grouping Variable Count</h3><p>How many independent groups (passes) the query requires.</p></div>
+    <div class="card"><h3><code>V</code> — Grouping Attributes</h3><p>The dimensions to group by — shared across all n grouping variables.</p></div>
+    <div class="card"><h3><code>F</code> — Aggregate Vector</h3><p>Aggregates tagged to a grouping variable: <code>1_sum_quant</code>, <code>2_avg_price</code>, …</p></div>
+    <div class="card"><h3><code>σ</code> — Sigma Conditions</h3><p>One filter predicate per grouping variable. Controls which rows contribute to each group.</p></div>
+    <div class="card"><h3><code>G</code> — Having Condition</h3><p>Post-aggregation filter on the final MF table (like SQL <code>HAVING</code>).</p></div>
+  </div>
+</div>
+
+<!-- SLIDE 4: System Architecture -->
+<div class="slide" id="s4">
+  <h2>System Architecture</h2>
+  <p style="margin-bottom:24px;">The engine is a pipeline from raw text input to final results <em>and</em> a generated standalone Python program.</p>
+  <div class="pipeline">
+    <div class="step"><div class="label">Input</div><div class="name">query.txt<br>/ terminal</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="label">main.py</div><div class="name">Parse &amp; Route</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="label">parser.py</div><div class="name">Validate &amp; Build IR</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="label">mf_structure.py</div><div class="name">MF Table Schema</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="label">mf_query.py</div><div class="name">Execute Query</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="label">generator.py</div><div class="name">Emit Python Code</div></div>
+  </div>
+  <div style="margin-top:28px;" class="cols cols-3">
+    <div class="card"><h3>3 Input Modes</h3><p>File (<code>--file</code>), interactive terminal prompts, or direct CLI arguments.</p></div>
+    <div class="card"><h3>PostgreSQL Backend</h3><p><code>sql.py</code> streams rows from a real <code>sales</code> table via psycopg2.</p></div>
+    <div class="card"><h3>Code Generation</h3><p>Produces a standalone <code>generated_mf_query.py</code> that can be run independently.</p></div>
+  </div>
+</div>
+
+<!-- SLIDE 5: Parser -->
+<div class="slide" id="s5">
+  <h2>Parser — <code>parser.py</code></h2>
+  <p style="margin-bottom:16px;">Validates all six query components and builds a typed intermediate representation (IR) consumed by the rest of the pipeline.</p>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom:10px;">Key validation rules</h3>
+      <ul>
+        <li>Aggregate tokens must match <code>N_agg_attr</code> or <code>agg_N_attr</code></li>
+        <li>σ group numbers must be in range <code>[1..n]</code></li>
+        <li>σ can reference only <em>previously computed</em> aggregates (no forward refs)</li>
+        <li>All S aggregates must also appear in F</li>
+        <li>Exactly one σ condition per grouping variable</li>
+        <li>No duplicate entries in S, F, or V</li>
+      </ul>
+    </div>
+    <pre><code><span class="cm"># Aggregate token regex &amp; parser</span>
+<span class="kw">def</span> <span class="fn">_parse_agg</span>(token):
+    parts = token.split(<span class="str">"_"</span>)
+    <span class="kw">if</span> len(parts) != 3:
+        <span class="kw">return</span> <span class="kw">None</span>
+    <span class="kw">if</span> parts[0].isdigit():
+        <span class="kw">return</span> int(parts[0]), parts[1], parts[2]
+    <span class="kw">if</span> parts[1].isdigit():
+        <span class="kw">return</span> int(parts[1]), parts[0], parts[2]
+    <span class="kw">return</span> <span class="kw">None</span>
+
+<span class="cm"># σ forward-reference guard</span>
+<span class="kw">if</span> ref_group >= current_group:
+    error(<span class="str">f"σ references forward group"</span>)</code></pre>
+  </div>
+</div>
+
+<!-- SLIDE 6: MF Structure -->
+<div class="slide" id="s6">
+  <h2>MF Table — <code>mf_structure.py</code></h2>
+  <p style="margin-bottom:16px;">The in-memory <strong>MF table</strong> is a list of entry dicts — one row per distinct combination of grouping attributes <code>V</code>.</p>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom:10px;">Entry structure</h3>
+      <ul>
+        <li><strong>Group attributes</strong> (e.g. <code>cust</code>) — initialized from the first matching row</li>
+        <li><strong>Aggregates</strong> — typed initial values: <code>0</code> for sum/count, <code>None</code> for min/max, <code>{sum,count,value}</code> dict for avg</li>
+      </ul>
+      <div class="formula">{
+  "cust": None,
+  "1_sum_quant": 0,
+  "2_sum_quant": 0,
+  "3_sum_quant": 0
+}</div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:10px;">Lookup strategy</h3>
+      <p style="margin-bottom:10px;">Linear scan keyed on a tuple of grouping attribute values — simple, correct, and sufficient for classroom-scale sales data.</p>
+      <pre><code><span class="kw">def</span> <span class="fn">lookup_mf_entry</span>(table, row, attrs):
+    key = <span class="fn">build_group_key</span>(row, attrs)
+    <span class="kw">return</span> next(
+        (i <span class="kw">for</span> i, e <span class="kw">in</span> enumerate(table)
+         <span class="kw">if</span> <span class="fn">build_group_key</span>(e, attrs) == key),
+        -1
+    )</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 7: Execution Algorithm -->
+<div class="slide" id="s7">
+  <h2>Query Execution — <code>mf_query.py</code></h2>
+  <p style="margin-bottom:16px;">The EMF algorithm runs <strong>n + 1 passes</strong> over the sales rows.</p>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom:10px;">Scan 0 — Populate MF table</h3>
+      <p>Insert one entry per distinct <code>V</code>-combination seen in the entire table.</p>
+      <h3 style="margin-top:18px; margin-bottom:10px;">Scans 1 … n — Aggregate per group</h3>
+      <p>For each grouping variable <code>g</code>, scan every row. If the row's MF entry exists <em>and</em> passes <code>σ_g</code>, update all aggregates tagged to group <code>g</code>.</p>
+      <h3 style="margin-top:18px; margin-bottom:10px;">Final filter — Apply G (HAVING)</h3>
+      <p>Keep only entries satisfying the G predicate; project to S columns; sort by V.</p>
+    </div>
+    <pre style="font-size:0.82rem;"><code><span class="cm"># Scan 0</span>
+<span class="kw">for</span> row <span class="kw">in</span> rows:
+    <span class="kw">if</span> <span class="fn">lookup</span>(table, row, V) == -1:
+        <span class="fn">add_mf_entry</span>(table, row, V)
+
+<span class="cm"># Scans 1..n</span>
+<span class="kw">for</span> g <span class="kw">in</span> range(1, n+1):
+    sigma = get_sigma(g)
+    aggs  = [a <span class="kw">for</span> a <span class="kw">in</span> F <span class="kw">if</span> a[<span class="str">"group"</span>]==g]
+    <span class="kw">for</span> row <span class="kw">in</span> rows:
+        pos = <span class="fn">lookup</span>(table, row, V)
+        <span class="kw">if</span> pos != -1 <span class="kw">and</span> <span class="fn">row_matches_sigma</span>(...):
+            <span class="kw">for</span> item <span class="kw">in</span> aggs:
+                <span class="fn">_update_agg</span>(table[pos], item, row)
+
+<span class="cm"># G filter + project</span>
+results = [project(e) <span class="kw">for</span> e <span class="kw">in</span> table
+           <span class="kw">if</span> <span class="fn">entry_matches_g</span>(e, G)]</code></pre>
+  </div>
+</div>
+
+<!-- SLIDE 8: Code Generation -->
+<div class="slide" id="s8">
+  <h2>Code Generation — <code>generator.py</code></h2>
+  <p style="margin-bottom:16px;">After executing the query in-process, the engine emits <strong>three standalone Python files</strong> as output artifacts.</p>
+  <div class="cols cols-3">
+    <div class="card">
+      <h3>generated_mf_struct.py</h3>
+      <p>The MF entry template and empty table definition — the schema for this specific query.</p>
+    </div>
+    <div class="card">
+      <h3>generated_simple_query.py</h3>
+      <p>A hardcoded warmup query from the project handout: single-pass GROUP BY over <code>sales</code>.</p>
+    </div>
+    <div class="card">
+      <h3>generated_mf_query.py</h3>
+      <p>A full standalone EMF query program embedding the parsed query dict. Runnable independently via <code>python3 -m generated.generated_mf_query</code>.</p>
+    </div>
+  </div>
+  <div style="margin-top:20px;">
+    <p class="muted" style="font-size:0.9rem;">Each file is written to <code>_generated.py</code> first, validated by running it with <code>subprocess.run(["python", "_generated.py"])</code>, then saved to its final path. This acts as a compile-time sanity check.</p>
+  </div>
+</div>
+
+<!-- SLIDE 9: Example Query -->
+<div class="slide" id="s9">
+  <h2>Example: 3-Group Sales Query</h2>
+  <p style="margin-bottom:16px;">Find total sales quantity per customer, broken out by state: NY vs NJ vs CT — in a single EMF query.</p>
+  <div class="cols cols-2">
+    <pre><code><span class="cm"># query.txt</span>
+SELECT ATTRIBUTE(S):
+  cust, 1_sum_quant, 2_sum_quant, 3_sum_quant
+
+NUMBER OF GROUPING VARIABLES(n):
+  3
+
+GROUPING ATTRIBUTES(V):
+  cust
+
+F-VECT([F]):
+  1_sum_quant, 2_sum_quant, 3_sum_quant
+
+SELECT CONDITION-VECT([sigma]):
+  1.state=<span class="str">'NY'</span>
+  2.state=<span class="str">'NJ'</span>
+  3.state=<span class="str">'CT'</span>
+
+HAVING_CONDITION(G):
+  none</code></pre>
+    <div>
+      <h3 style="margin-bottom:12px;">What this computes</h3>
+      <p style="margin-bottom:14px;">Equivalent to three self-joins of <code>sales</code> — but expressed as one declarative query and executed in 4 passes (scan 0 + 3 sigma scans).</p>
+      <div class="formula">SELECT cust,
+  SUM(quant) FILTER (WHERE state='NY'),
+  SUM(quant) FILTER (WHERE state='NJ'),
+  SUM(quant) FILTER (WHERE state='CT')
+FROM sales
+GROUP BY cust</div>
+      <p style="margin-top:10px; font-size:0.9rem; color:#64748b;">Run: <code>python3 main.py --file query.txt</code></p>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 10: Summary -->
+<div class="slide" id="s10">
+  <h2>Summary</h2>
+  <div class="cols cols-2" style="gap:30px;">
+    <div>
+      <h3 style="margin-bottom:12px;">What was built</h3>
+      <ul>
+        <li><strong>Full EMF query parser</strong> with strict validation and typed IR</li>
+        <li><strong>In-memory MF table engine</strong> with n+1 pass execution</li>
+        <li><strong>Code generator</strong> — queries become runnable Python programs</li>
+        <li><strong>3 input modes</strong>: file, interactive, CLI args</li>
+        <li><strong>PostgreSQL backend</strong> via <code>sql.py</code> + psycopg2</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-bottom:12px;">Design highlights</h3>
+      <ul>
+        <li>Forward-reference guard prevents invalid σ predicates</li>
+        <li>avg stored as <code>{sum, count, value}</code> to support incremental updates</li>
+        <li>Generated files are self-contained and independently runnable</li>
+        <li>Single public entry point: <code>build_query_data()</code> → clean IR for all downstream modules</li>
+      </ul>
+      <div style="margin-top:24px; padding:14px 18px; background:#1e293b; border-radius:8px; border-left:4px solid #22c55e;">
+        <p style="color:#86efac; font-size:0.95rem;"><strong>It works on my machine.</strong></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Navigation -->
+<div class="slide-num" id="slideNum">1 / 10</div>
+<div class="nav">
+  <button onclick="move(-1)">&#8592; Prev</button>
+  <button onclick="move(1)">Next &#8594;</button>
+</div>
+<footer>CS562 – EMF Query Engine</footer>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function show(i) {
+    slides[cur].classList.remove('active');
+    cur = (i + slides.length) % slides.length;
+    slides[cur].classList.add('active');
+    document.getElementById('slideNum').textContent = `${cur + 1} / ${slides.length}`;
+  }
+  function move(d) { show(cur + d); }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') move(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   move(-1);
+  });
+</script>
+</body>
+</html>
