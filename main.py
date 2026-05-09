@@ -1,11 +1,6 @@
 import sys
 from parser import build_query_data, error, split_input
-from mf_structure import build_mf_structure_fields
-from generator import (
-    generate_python_mf_structure_code,
-    generate_python_mf_query_code,
-    save_generated_code,
-)
+from generator import generate_python_mf_query_code, save_generated_code
 from mf_query import build_mf_query, execute_mf_query
 from sql import scan_sales_rows
 
@@ -30,39 +25,31 @@ def print_final_results(results):
     for row in results:
         print(" ", row)
 
-# generates and saves the MF structure file and returns its filename
-def save_step_outputs(query_data):
-    mf_fields = build_mf_structure_fields(query_data)
-    mf_struct_file = "generated/generated_mf_struct.py"
-    save_generated_code(mf_struct_file, generate_python_mf_structure_code(mf_fields))
-    return mf_struct_file
-
-
 # Section header keywords for file-mode input parsing
 SECTIONS = [
-    ("select attribute", "S"),
+    ("s - projected", "S"),
     ("number of grouping", "n"),
     ("grouping attributes", "V"),
     ("f-vect", "F"),
-    ("condition-vect", "sigma"),
-    ("select condition", "sigma"),
+    ("pred-list", "sigma"),
     ("having", "G"),
 ]
 
 
-# Use case 1: Reads query inputs from a txt, and scans for SELECT, ATTR, GROUPING VARS, etc (validates all)
+# Use case 1: Reads query inputs from a txt, and scans for # comment-style section headers
 def read_inputs_from_file(filepath):
     with open(filepath) as f:
-        lines = [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
+        lines = [l.strip() for l in f if l.strip()]
 
     sections, cur, cur_lines = {}, None, []
     for line in lines:
-        lo = line.lower()
-        new_sec = next((v for k, v in SECTIONS if k in lo), None)
-        if new_sec:
-            if cur: sections[cur] = cur_lines
-            cur, cur_lines = new_sec, []
-        else:
+        if line.startswith("#"):
+            lo = line.lstrip("#").strip().lower()
+            new_sec = next((v for k, v in SECTIONS if k in lo), None)
+            if new_sec:
+                if cur: sections[cur] = cur_lines
+                cur, cur_lines = new_sec, []
+        elif cur:
             cur_lines.append(line)
     if cur:
         sections[cur] = cur_lines
@@ -82,7 +69,7 @@ def read_inputs_interactively():
     n_input = input("NUMBER OF GROUPING VARIABLES(n): ").strip()
     V_input = input("GROUPING ATTRIBUTES(V): ").strip()
     F_input = input("F-VECT([F]): ").strip()
-    print("SELECT CONDITION-VECT([sigma]) - one condition per line, blank line when done:")
+    print("PRED-LIST([sigma]) - one predicate per grouping var, blank line when done:")
     sigma_lines = []
     while True:
         line = input("sigma: ").strip()
@@ -120,22 +107,18 @@ def parse_and_run(S_input, n_input, V_input, F_input, sigma_input, G_input):
     query_data = build_query_data(S, n, V, F, sigma, G)
 
     # prints out parsed query summ
-    print_query_summary(query_data)
-
-    mf_struct_file = save_step_outputs(query_data)
+    # print_query_summary(query_data)
 
     mf_query = build_mf_query(query_data)
     rows = list(scan_sales_rows())
     _, _, _, results = execute_mf_query(rows, mf_query)
-    print_final_results(results)
+    # print_final_results(results)
 
-    mf_output_filename = "generated/generated_mf_query.py"
+    mf_output_filename = "generated_mf_query.py"
     save_generated_code(mf_output_filename, generate_python_mf_query_code(mf_query))
 
-    print("\nGenerated files:")
-    print(f"{mf_struct_file}")
-    print(f"{mf_output_filename}")
-    print("Run generated MF query with: python3 generated/generated_mf_query.py")
+    print(f"\nGenerated: {mf_output_filename}")
+    print("Run with: python generated_mf_query.py")
 
 
 def main():

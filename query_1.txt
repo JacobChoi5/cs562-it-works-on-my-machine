@@ -1,13 +1,16 @@
-SELECT ATTRIBUTE(S):
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+Phi Expression:
+# 1. S - projected columns / expressions
 cust, prod, 1_sum_quant, 1_count_quant, 2_sum_quant, 2_count_quant
-NUMBER OF GROUPING VARIABLES(n):
+# 2. n - number of grouping variables
 2
-GROUPING ATTRIBUTES(V):
+# 3. V - grouping attributes
 cust, prod
-F-VECT([F]):
+# 4. F-VECT – vector of aggregate functions
 1_sum_quant, 1_count_quant, 2_sum_quant, 2_count_quant
-SELECT CONDITION-VECT([sigma]):
-1.month>=1 and 1.month<=3
-2.month>=7 and 2.month<=9
-HAVING_CONDITION(G):
+# 5. PRED-LIST – list of predicates for grouping var's
+1.month>=1 and 1.month<=3; 2.month>=7 and 2.month<=9
+# 6. HAVING
 1_sum_quant > 2_sum_quant

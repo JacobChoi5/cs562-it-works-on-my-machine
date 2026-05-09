@@ -16,6 +16,8 @@ def build_mf_query(query_data): # reshapes the raw parsed query dict into mf que
 
 
 def compare_values(left, op, right): # checks if op in supported comparison ops and resolves
+    if left is None or right is None: # NULL in any comparison = unknown = false, same as SQL
+        return False
     if op not in CMP:
         raise ValueError(f"Unsupported comparison operator: {op}")
     return CMP[op](left, right)
