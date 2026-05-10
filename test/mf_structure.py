@@ -47,7 +47,7 @@ def build_group_key(row, attrs): # pulls data from mf entry or row given groupin
 
 def lookup_mf_entry(table, row, attrs): # linear search for entry whose grouping attribute value matches given row
     key = build_group_key(row, attrs)
-    return next((i for i, e in enumerate(table) if build_group_key(e, attrs) == key), -1) # CLAUDE WROTE THIS returns index if found, -1 otherwise
+    return next((i for i, e in enumerate(table) if build_group_key(e, attrs) == key), -1) # returns index if found, -1 otherwise
 
 
 def add_mf_entry(table, row, attrs, mf_fields): # creates new mf entry and appends to table

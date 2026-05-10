@@ -126,7 +126,7 @@ def main():
         inputs = read_inputs_from_file(sys.argv[2])
     elif len(sys.argv) == 1:
         inputs = read_inputs_interactively()
-    elif len(sys.argv) == 7: # use case 3 --> CLI
+    elif len(sys.argv) == 7:
         inputs = tuple(sys.argv[1:7])
     else:
         error(

@@ -3,14 +3,14 @@
 #-----------------------------------------------------------------------------
 Phi Expression:
 # 1. S - projected columns / expressions
-cust, 1_sum_quant, 2_sum_quant, 3_sum_quant
+cust, 1_sum_quant, 2_sum_quant
 # 2. n - number of grouping variables
-3
+2
 # 3. V - grouping attributes
 cust
 # 4. F-VECT – vector of aggregate functions
-1_sum_quant, 2_sum_quant, 3_sum_quant
+1_sum_quant, 2_sum_quant
 # 5. PRED-LIST – list of predicates for grouping var's
-1.state='NY'; 2.state='NJ'; 3.state='CT'
+1.cust=cust and 1.state='NY'; 2.cust!=cust
 # 6. HAVING
 none
