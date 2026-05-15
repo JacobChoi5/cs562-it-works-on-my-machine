@@ -1,0 +1,16 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+Phi Expression:
+# 1. S - projected columns / expressions
+cust, prod, 1_sum_quant, 2_avg_quant
+# 2. n - number of grouping variables
+2
+# 3. V - grouping attributes
+cust, prod
+# 4. F-VECT – vector of aggregate functions
+1_sum_quant, 2_avg_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.cust=cust and 1.prod=prod and 1.state='NY'; 2.cust!=cust and 2.prod=prod and 2.state='NJ'
+# 6. HAVING
+1_sum_quant > 2_avg_quant

@@ -1,0 +1,18 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+# Inter-group comparison: for each customer, show their own NY total vs the
+# combined NY total of all OTHER customers (cross-entry group_attr predicate)
+Phi Expression:
+# 1. S - projected columns / expressions
+cust, 1_sum_quant, 1_count_quant, 2_sum_quant, 2_count_quant
+# 2. n - number of grouping variables
+2
+# 3. V - grouping attributes
+cust
+# 4. F-VECT – vector of aggregate functions
+1_sum_quant, 1_count_quant, 2_sum_quant, 2_count_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.state='NY' and 1.cust=cust; 2.state='NY' and 2.cust!=cust
+# 6. HAVING
+1_sum_quant > 2_sum_quant

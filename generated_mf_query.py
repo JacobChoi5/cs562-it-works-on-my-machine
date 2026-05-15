@@ -136,6 +136,12 @@ def update_agg(entry, item, row): # updates all aggregates
             entry[n] = v
 
 
+def sigma_has_cross_entry_predicates(sigma):
+    if sigma is None:
+        return False
+    return any(p["right_type"] == "group_attr" for p in sigma.get("predicates", []))
+
+
 def execute_mf_query(rows, mf_query):
     # builds structure
     mf_fields = build_mf_structure_fields({"V": mf_query["V"], "F": mf_query["F"]})
@@ -153,10 +159,18 @@ def execute_mf_query(rows, mf_query):
         if not aggs:
             continue
         for row in rows:
-            pos = lookup_mf_entry(table, row, mf_query["V"]) # matches grouping attribute
-            if pos != -1 and row_matches_sigma(row, table[pos], sigma): # checks filter, updates if passes
-                for item in aggs:
-                    update_agg(table[pos], item, row)
+            if sigma_has_cross_entry_predicates(sigma):
+                # group_attr predicates compare row columns against other entries' attributes,
+                # so we must test the row against every entry, not just the one matching the row's key
+                for i, entry in enumerate(table):
+                    if row_matches_sigma(row, entry, sigma):
+                        for item in aggs:
+                            update_agg(table[i], item, row)
+            else:
+                pos = lookup_mf_entry(table, row, mf_query["V"]) # matches grouping attribute
+                if pos != -1 and row_matches_sigma(row, table[pos], sigma): # checks filter, updates if passes
+                    for item in aggs:
+                        update_agg(table[pos], item, row)
 
     filtered = [e for e in table if entry_matches_g(e, mf_query["G"])] # drops entries based on HAVING
     results = [{k: resolve(e, k) for k in mf_query["S"]} for e in filtered] # builds with only S columns and flattens aggregates
@@ -200,9 +214,18 @@ def scan_sales_rows():
 
 
 MF_QUERY = {'F': [{'agg': 'sum', 'attr': 'quant', 'group': 1, 'raw': '1_sum_quant'},
-       {'agg': 'sum', 'attr': 'quant', 'group': 2, 'raw': '2_sum_quant'}],
- 'G': {'kind': 'none', 'predicates': [], 'raw': 'none'},
- 'S': ['cust', '1_sum_quant', '2_sum_quant'],
+       {'agg': 'count', 'attr': 'quant', 'group': 1, 'raw': '1_count_quant'},
+       {'agg': 'sum', 'attr': 'quant', 'group': 2, 'raw': '2_sum_quant'},
+       {'agg': 'count', 'attr': 'quant', 'group': 2, 'raw': '2_count_quant'}],
+ 'G': {'kind': 'and_chain',
+       'predicates': [{'left_type': 'field',
+                       'left_value': '1_sum_quant',
+                       'op': '>',
+                       'raw': '1_sum_quant > 2_sum_quant',
+                       'right_type': 'field',
+                       'right_value': '2_sum_quant'}],
+       'raw': '1_sum_quant > 2_sum_quant'},
+ 'S': ['cust', '1_sum_quant', '1_count_quant', '2_sum_quant', '2_count_quant'],
  'V': ['cust'],
  'n': 2,
  'sigma': [{'group': 1,
@@ -212,17 +235,31 @@ MF_QUERY = {'F': [{'agg': 'sum', 'attr': 'quant', 'group': 1, 'raw': '1_sum_quan
                             'op': '==',
                             'raw': "1.state='NY'",
                             'right_type': 'literal',
-                            'right_value': 'NY'}],
-            'raw': "1.state='NY'"},
+                            'right_value': 'NY'},
+                           {'aggregate_ref': None,
+                            'group': 1,
+                            'left_attr': 'cust',
+                            'op': '==',
+                            'raw': '1.cust=cust',
+                            'right_type': 'group_attr',
+                            'right_value': 'cust'}],
+            'raw': "1.state='NY' and 1.cust=cust"},
            {'group': 2,
             'predicates': [{'aggregate_ref': None,
                             'group': 2,
                             'left_attr': 'state',
-                            'op': '!=',
-                            'raw': "2.state!='NY'",
+                            'op': '==',
+                            'raw': "2.state='NY'",
                             'right_type': 'literal',
-                            'right_value': 'NY'}],
-            'raw': "2.state!='NY'"}]}
+                            'right_value': 'NY'},
+                           {'aggregate_ref': None,
+                            'group': 2,
+                            'left_attr': 'cust',
+                            'op': '!=',
+                            'raw': '2.cust!=cust',
+                            'right_type': 'group_attr',
+                            'right_value': 'cust'}],
+            'raw': "2.state='NY' and 2.cust!=cust"}]}
 
 
 def main():

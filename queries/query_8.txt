@@ -1,0 +1,18 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+# For each customer and product, break annual sales into four quarters and
+# compare Q1 vs Q2 vs Q3 vs Q4 — keep rows where Q4 beat Q1
+Phi Expression:
+# 1. S - projected columns / expressions
+cust, prod, 1_sum_quant, 2_sum_quant, 3_sum_quant, 4_sum_quant
+# 2. n - number of grouping variables
+4
+# 3. V - grouping attributes
+cust, prod
+# 4. F-VECT – vector of aggregate functions
+1_sum_quant, 2_sum_quant, 3_sum_quant, 4_sum_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.month>=1 and 1.month<=3; 2.month>=4 and 2.month<=6; 3.month>=7 and 3.month<=9; 4.month>=10 and 4.month<=12
+# 6. HAVING
+4_sum_quant > 1_sum_quant

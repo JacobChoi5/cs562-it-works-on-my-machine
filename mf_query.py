@@ -74,6 +74,12 @@ def update_agg(entry, item, row): # updates all aggregates
             entry[n] = v
 
 
+def sigma_has_cross_entry_predicates(sigma):
+    if sigma is None:
+        return False
+    return any(p["right_type"] == "group_attr" for p in sigma.get("predicates", []))
+
+
 def execute_mf_query(rows, mf_query):
     # builds structure
     mf_fields = build_mf_structure_fields({"V": mf_query["V"], "F": mf_query["F"]})
@@ -91,10 +97,18 @@ def execute_mf_query(rows, mf_query):
         if not aggs:
             continue
         for row in rows:
-            pos = lookup_mf_entry(table, row, mf_query["V"]) # matches grouping attribute
-            if pos != -1 and row_matches_sigma(row, table[pos], sigma): # checks filter, updates if passes
-                for item in aggs:
-                    update_agg(table[pos], item, row)
+            if sigma_has_cross_entry_predicates(sigma):
+                # group_attr predicates compare row columns against other entries' attributes,
+                # so we must test the row against every entry, not just the one matching the row's key
+                for i, entry in enumerate(table):
+                    if row_matches_sigma(row, entry, sigma):
+                        for item in aggs:
+                            update_agg(table[i], item, row)
+            else:
+                pos = lookup_mf_entry(table, row, mf_query["V"]) # matches grouping attribute
+                if pos != -1 and row_matches_sigma(row, table[pos], sigma): # checks filter, updates if passes
+                    for item in aggs:
+                        update_agg(table[pos], item, row)
 
     filtered = [e for e in table if entry_matches_g(e, mf_query["G"])] # drops entries based on HAVING
     results = [{k: resolve(e, k) for k in mf_query["S"]} for e in filtered] # builds with only S columns and flattens aggregates

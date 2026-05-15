@@ -1,0 +1,18 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+# For each customer, find their CT sales baseline, then count how many of their
+# NY sales exceeded that CT average — a two-level dependent aggregate
+Phi Expression:
+# 1. S - projected columns / expressions
+cust, 1_avg_quant, 1_count_quant, 2_sum_quant, 2_count_quant
+# 2. n - number of grouping variables
+2
+# 3. V - grouping attributes
+cust
+# 4. F-VECT – vector of aggregate functions
+1_avg_quant, 1_count_quant, 2_sum_quant, 2_count_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.state='CT'; 2.state='NY' and 2.quant>1_avg_quant
+# 6. HAVING
+2_count_quant >= 1

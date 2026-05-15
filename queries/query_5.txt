@@ -1,0 +1,18 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+# For each product, compare year-over-year sales: 2010 vs 2011
+# Shows sum and average quantity for each year, keeping products where 2011 beat 2010
+Phi Expression:
+# 1. S - projected columns / expressions
+prod, 1_sum_quant, 1_avg_quant, 2_sum_quant, 2_avg_quant
+# 2. n - number of grouping variables
+2
+# 3. V - grouping attributes
+prod
+# 4. F-VECT – vector of aggregate functions
+1_sum_quant, 1_avg_quant, 2_sum_quant, 2_avg_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.year=2010; 2.year=2011
+# 6. HAVING
+2_avg_quant > 1_avg_quant

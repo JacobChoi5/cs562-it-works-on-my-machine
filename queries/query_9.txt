@@ -1,0 +1,19 @@
+#-----------------------------------------------------------------------------
+# EMF query in Phi operation
+#-----------------------------------------------------------------------------
+# For each customer and product: compute NJ baseline avg, then find NY sales
+# above that baseline, then find CT sales above the NY-above-baseline avg —
+# a three-level dependent chain
+Phi Expression:
+# 1. S - projected columns / expressions
+cust, prod, 1_avg_quant, 2_count_quant, 2_avg_quant, 3_sum_quant, 3_max_quant
+# 2. n - number of grouping variables
+3
+# 3. V - grouping attributes
+cust, prod
+# 4. F-VECT – vector of aggregate functions
+1_avg_quant, 2_count_quant, 2_avg_quant, 3_sum_quant, 3_max_quant
+# 5. PRED-LIST – list of predicates for grouping var's
+1.state='NJ'; 2.state='NY' and 2.quant>1_avg_quant; 3.state='CT' and 3.quant>2_avg_quant
+# 6. HAVING
+3_max_quant > 1_avg_quant
